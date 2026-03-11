@@ -1,0 +1,376 @@
+// IT Support & Service Desk Platform - Prisma Schema (SQLite)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USERS & AUTH
+// ============================================================
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  firstName    String
+  lastName     String
+  phone        String?
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roleId       String
+  departmentId String?
+
+  role                Role          @relation(fields: [roleId], references: [id])
+  department          Department?   @relation(fields: [departmentId], references: [id])
+  refreshTokens       RefreshToken[]
+  createdTickets      Ticket[]      @relation("CreatedByUser")
+  assignedTickets     Ticket[]      @relation("AssignedToUser")
+  comments            TicketComment[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  assetAssignments    AssetAssignment[]
+  kbArticles          KbArticle[]
+
+  @@index([email])
+  @@index([roleId])
+  @@index([departmentId])
+  @@map("users")
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  managerId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  tickets   Ticket[]
+
+  @@map("departments")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// TICKETS
+// ============================================================
+
+model Ticket {
+  id           String    @id @default(uuid())
+  ticketNumber String    @unique
+  title        String
+  description  String
+  type         String    // INCIDENT | REQUEST | CHANGE
+  status       String    @default("OPEN") // OPEN | IN_PROGRESS | PENDING | RESOLVED | CLOSED
+  priority     String    // LOW | MEDIUM | HIGH | CRITICAL
+  slaBreached  Boolean   @default(false)
+  dueAt        DateTime?
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  createdById  String
+  assignedToId String?
+  departmentId String?
+  slaId        String?
+
+  createdBy    User          @relation("CreatedByUser", fields: [createdById], references: [id])
+  assignedTo   User?         @relation("AssignedToUser", fields: [assignedToId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  slaPolicy    SlaPolicy?    @relation(fields: [slaId], references: [id])
+  comments     TicketComment[]
+  attachments  Attachment[]
+  tags         TicketTag[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([type])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@index([slaBreached])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id         String    @id @default(uuid())
+  content    String
+  isInternal Boolean   @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  ticketId   String
+  userId     String
+
+  ticket     Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@index([userId])
+  @@map("ticket_comments")
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  fileName  String
+  fileUrl   String
+  fileSize  Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  ticketId  String
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@map("attachments")
+}
+
+model TicketTag {
+  ticketId String
+  tag      String
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, tag])
+  @@map("ticket_tags")
+}
+
+// ============================================================
+// ASSETS (ITAM)
+// ============================================================
+
+model Asset {
+  id           String    @id @default(uuid())
+  assetTag     String    @unique
+  name         String
+  type         String    // LAPTOP | DESKTOP | SERVER | NETWORK | PHONE | PRINTER | SOFTWARE | OTHER
+  status       String    @default("AVAILABLE") // AVAILABLE | ASSIGNED | IN_REPAIR | RETIRED | DISPOSED
+  manufacturer String?
+  model        String?
+  serialNumber String?
+  purchaseDate DateTime?
+  warrantyEnd  DateTime?
+  location     String?
+  ipAddress    String?
+  macAddress   String?
+  notes        String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  assignments  AssetAssignment[]
+
+  @@index([type])
+  @@index([status])
+  @@index([assetTag])
+  @@map("assets")
+}
+
+model AssetAssignment {
+  id         String    @id @default(uuid())
+  assignedAt DateTime  @default(now())
+  returnedAt DateTime?
+  notes      String?
+  createdAt  DateTime  @default(now())
+
+  assetId    String
+  userId     String
+
+  asset      Asset     @relation(fields: [assetId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([assetId])
+  @@index([userId])
+  @@map("asset_assignments")
+}
+
+// ============================================================
+// SLA POLICIES
+// ============================================================
+
+model SlaPolicy {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  priority            String   // LOW | MEDIUM | HIGH | CRITICAL
+  responseTimeHours   Int
+  resolutionTimeHours Int
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tickets             Ticket[]
+
+  @@map("sla_policies")
+}
+
+// ============================================================
+// AUTOMATION RULES
+// ============================================================
+
+model AutomationRule {
+  id             String    @id @default(uuid())
+  name           String
+  description    String?
+  isActive       Boolean   @default(true)
+  trigger        String    // JSON: { event: 'ticket.created' | ... }
+  conditions     String    // JSON: [{ field, operator, value }]
+  actions        String    // JSON: [{ type, params }]
+  executedCount  Int       @default(0)
+  lastExecutedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([isActive])
+  @@map("automation_rules")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id        String    @id @default(uuid())
+  title     String
+  message   String
+  type      String    // TICKET_CREATED | TICKET_ASSIGNED | TICKET_UPDATED | TICKET_RESOLVED | SLA_BREACH | ASSET_ASSIGNED | SYSTEM
+  isRead    Boolean   @default(false)
+  metadata  String?   // JSON
+  createdAt DateTime  @default(now())
+
+  userId    String
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================
+// KNOWLEDGE BASE
+// ============================================================
+
+model KbArticle {
+  id          String    @id @default(uuid())
+  title       String
+  content     String
+  category    String
+  tags        String    @default("[]") // JSON array string
+  isPublished Boolean   @default(false)
+  viewCount   Int       @default(0)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  authorId    String
+
+  author      User      @relation(fields: [authorId], references: [id])
+
+  @@index([category])
+  @@index([isPublished])
+  @@index([authorId])
+  @@map("kb_articles")
+}
+
+// ============================================================
+// AUDIT LOGS
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  resource   String
+  resourceId String?
+  oldValues  String?  // JSON
+  newValues  String?  // JSON
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  userId     String?
+
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([resource])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// SYSTEM SETTINGS
+// ============================================================
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   // JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}

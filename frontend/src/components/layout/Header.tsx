@@ -45,15 +45,7 @@ export function Header({ title, subtitle }: HeaderProps) {
         />
       </form>
 
-      {/* Notifications */}
-      <Link href="/notifications" className="relative p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
-        <Bell className="w-5 h-5" />
-        {(unread?.count ?? 0) > 0 && (
-          <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
-            {unread.count > 9 ? '9+' : unread.count}
-          </span>
-        )}
-      </Link>
+
 
       {/* Create Ticket CTA */}
       <Link href="/tickets/create" className="btn-primary flex items-center gap-1.5">
